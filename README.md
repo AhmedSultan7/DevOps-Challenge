@@ -1,3 +1,89 @@
+# DevOps Challenge: Helm deployment on Kubernetes
+
+Helm chart that deploys the Tradebyte demo app (Tornado + Redis) on Kubernetes, with 3+ replicas, CPU-based autoscaling, and configuration kept out of the image.
+
+## What's included
+
+- `Dockerfile`: builds the app image (`python:3.9-slim`, non-root user)
+- `devops-challenge/`: Helm chart
+  - app Deployment and NodePort Service
+  - ConfigMap for plain settings and a Secret for `REDIS_HOST` and any extra sensitive values
+  - single-replica Redis Deployment and Service
+  - HorizontalPodAutoscaler: 3 to 10 replicas at 70% CPU
+- Image published at `soltanahmed1960/devops-challenge-app` on Docker Hub
+
+## Prerequisites
+
+Docker, minikube, kubectl, Helm 3.
+
+```bash
+minikube start
+minikube addons enable metrics-server   # required for the HPA
+```
+
+## Deploy
+
+```bash
+helm install my-app ./devops-challenge -n challenge --create-namespace
+kubectl get pods,svc,hpa -n challenge
+minikube service my-app-devops-challenge -n challenge
+```
+
+To build the image yourself instead of pulling it:
+
+```bash
+docker build -t <your-user>/devops-challenge-app:0.1.1 .
+docker push <your-user>/devops-challenge-app:0.1.1
+helm upgrade --install my-app ./devops-challenge -n challenge \
+  --set image.repository=<your-user>/devops-challenge-app
+```
+
+## Configuration
+
+Non-sensitive settings live under `env` in `values.yaml` and go into a ConfigMap. Sensitive values go under `secretEnv` and are stored in a Kubernetes Secret. Pass them at install time and never commit them:
+
+```bash
+helm upgrade my-app ./devops-challenge -n challenge --set secretEnv.MY_KEY=value
+```
+
+Pods restart automatically when the ConfigMap or Secret changes (checksum annotations on the pod template).
+
+## Autoscaling test
+
+```bash
+kubectl get hpa -n challenge -w
+```
+
+In another terminal:
+
+```bash
+for i in 1 2 3; do
+  kubectl run load-$i -n challenge --image=busybox --restart=Never -- \
+    sh -c "while true; do wget -q -O- http://my-app-devops-challenge/ > /dev/null; done"
+done
+```
+
+In my test, CPU reached 245% of the request and the replicas scaled 3 → 6 → 10. Stop the load with `kubectl delete pod load-1 load-2 load-3 -n challenge`. Scale-down takes about 5 minutes.
+
+## Helm lifecycle
+
+```bash
+helm upgrade my-app ./devops-challenge -n challenge
+helm history my-app -n challenge
+helm rollback my-app <revision> -n challenge
+helm uninstall my-app -n challenge
+```
+
+## Notes and limitations
+
+- The pinned `tornado==5.1.1` uses `collections.MutableMapping`, removed in Python 3.10. With `python:3.11-slim` the pods crashed on import, so the image uses Python 3.9.
+- Redis is a single replica with no persistence, which is fine for a demo but not production.
+- The service is a NodePort. A real setup would use an Ingress.
+
+## Original challenge
+
+
+
 # TradeByte DevOps Challenge
 
 This repository is meant to be used as a challenge for DevOps candidates at Tradebyte.
