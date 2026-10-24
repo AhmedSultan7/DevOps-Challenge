@@ -1,0 +1,36 @@
+replicaCount: 3
+
+image:
+  repository: hello
+  tag: "0.1.1"
+  pullPolicy: IfNotPresent
+
+env:
+  ENVIRONMENT: PROD
+  HOST: "0.0.0.0"
+  PORT: "8000"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+
+secretEnv: {}
+
+redis:
+  image: redis:7-alpine
+
+service:
+  type: NodePort
+  port: 80
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
